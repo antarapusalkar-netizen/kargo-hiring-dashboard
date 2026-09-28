@@ -51,8 +51,9 @@ export async function extractResumeText(
     return text;
   } catch (err) {
     if (err instanceof UnreadableResumeError) throw err;
+    const detail = err instanceof Error ? err.message : String(err);
     throw new UnreadableResumeError(
-      `Could not read "${filename}". The file may be corrupted, password-protected, or in an unexpected format.`
+      `Could not read "${filename}" (${detail}). The file may be corrupted, password-protected, or in an unexpected format.`
     );
   }
 }
