@@ -1,5 +1,23 @@
 import mammoth from "mammoth";
 
+/**
+ * pdfjs-dist (used internally by pdf-parse) instantiates `new DOMMatrix()` at
+ * module scope, unconditionally, even for plain text extraction. DOMMatrix is
+ * a browser API with no Node equivalent — pdfjs-dist tries to polyfill it via
+ * @napi-rs/canvas's native binary, but that silently fails in some serverless
+ * runtimes (observed on Vercel), leaving `DOMMatrix` undefined and the whole
+ * module import throwing `ReferenceError: DOMMatrix is not defined`. Polyfill
+ * it ourselves with a small pure-JS implementation (no native binary, so no
+ * platform-specific build/runtime mismatch) before pdf-parse is ever loaded.
+ */
+async function ensureDomMatrixPolyfill() {
+  if (typeof (globalThis as { DOMMatrix?: unknown }).DOMMatrix !== "undefined") {
+    return;
+  }
+  const DOMMatrixPolyfill = (await import("dommatrix")).default;
+  (globalThis as { DOMMatrix?: unknown }).DOMMatrix = DOMMatrixPolyfill;
+}
+
 export class UnreadableResumeError extends Error {
   constructor(reason: string) {
     super(reason);
@@ -38,6 +56,7 @@ export async function extractResumeText(
     }
 
     // pdf-parse v2 exposes a PDFParse class rather than a default function.
+    await ensureDomMatrixPolyfill();
     const { PDFParse } = await import("pdf-parse");
     const parser = new PDFParse({ data: new Uint8Array(buffer) });
     const result = await parser.getText();
