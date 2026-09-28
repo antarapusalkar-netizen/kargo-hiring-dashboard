@@ -18,6 +18,26 @@ async function ensureDomMatrixPolyfill() {
   (globalThis as { DOMMatrix?: unknown }).DOMMatrix = DOMMatrixPolyfill;
 }
 
+/**
+ * In Node, pdfjs-dist runs parsing on the "main thread" instead of a real Web
+ * Worker, by dynamically `import()`-ing its own worker module at runtime
+ * (`GlobalWorkerOptions.workerSrc`, a relative path). Some bundlers/serverless
+ * platforms (observed on Vercel) don't trace that dynamic import and the file
+ * is missing from the deployed function, throwing
+ * `Setting up fake worker failed: "Cannot find module '.../pdf.worker.mjs'"`.
+ * Importing the worker module ourselves and exposing it as `globalThis.pdfjsWorker`
+ * lets pdfjs-dist find it directly and skip that fragile dynamic import path.
+ */
+async function ensurePdfWorkerGlobal() {
+  if (
+    (globalThis as { pdfjsWorker?: unknown }).pdfjsWorker !== undefined
+  ) {
+    return;
+  }
+  const workerModule = await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
+  (globalThis as { pdfjsWorker?: unknown }).pdfjsWorker = workerModule;
+}
+
 export class UnreadableResumeError extends Error {
   constructor(reason: string) {
     super(reason);
@@ -57,6 +77,7 @@ export async function extractResumeText(
 
     // pdf-parse v2 exposes a PDFParse class rather than a default function.
     await ensureDomMatrixPolyfill();
+    await ensurePdfWorkerGlobal();
     const { PDFParse } = await import("pdf-parse");
     const parser = new PDFParse({ data: new Uint8Array(buffer) });
     const result = await parser.getText();
