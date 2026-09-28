@@ -45,8 +45,14 @@ async function callStructured<T>(
       },
     });
   } catch (err) {
+    const detail =
+      err instanceof OpenAI.APIError
+        ? `${err.status ?? "?"} ${err.code ?? err.type ?? ""}: ${err.message}`.trim()
+        : err instanceof Error
+          ? err.message
+          : String(err);
     throw new AiAnalysisError(
-      "The AI analysis request failed (network or API error). Please try again.",
+      `The AI analysis request failed (${detail}). Please try again.`,
       err
     );
   }
