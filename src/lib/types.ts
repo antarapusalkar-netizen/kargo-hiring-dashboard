@@ -17,6 +17,14 @@ export interface ExtractedResume {
   employment: EmploymentEntry[];
   education: { degree: string; institution: string; years: string }[];
   skills: string[];
+  /**
+   * PM/SPM only if the document EXPLICITLY states which role/position is
+   * being applied for or targeted (an objective line, a cover note, an
+   * application header) — never inferred from the candidate's current job
+   * title or seniority. NONE when nothing explicit is stated (the common
+   * case for a plain resume).
+   */
+  statedTargetRole: "PM" | "SPM" | "NONE";
 }
 
 export interface CriterionScoreResult {
@@ -83,6 +91,8 @@ export interface CandidateListItem {
   experienceFlags: ExperienceFlag[];
   decisionStatus: DecisionStatus;
   otherRoleFit: OtherRoleFit | null;
+  roleAutoDetected: boolean;
+  roleDetectionNote: string | null;
   createdAt: string;
 }
 

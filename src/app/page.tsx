@@ -53,7 +53,7 @@ export default async function DashboardPage({
         </div>
       )}
 
-      <UploadForm defaultRole={role} />
+      <UploadForm />
 
       <div className="flex gap-2 border-b border-neutral-200 dark:border-neutral-800">
         {(["PM", "SPM"] as Role[]).map((r) => (

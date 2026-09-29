@@ -62,10 +62,16 @@ export default async function CandidateDetailPage({
           <div>
             <h1 className="text-xl font-semibold">{candidate.name}</h1>
             <p className="text-sm text-neutral-500">
-              Applied: {candidate.role === "PM" ? "Product Manager" : "Senior Product Manager"} ·{" "}
-              {candidate.yearsPmExperience === null ? "Experience unclear" : `${candidate.yearsPmExperience}y PM-titled experience`}
+              Applied: {candidate.role === "PM" ? "Product Manager" : "Senior Product Manager"}
+              {candidate.roleAutoDetected && (
+                <span className="ml-1 text-xs text-indigo-600 dark:text-indigo-400">(auto-detected)</span>
+              )}{" "}
+              · {candidate.yearsPmExperience === null ? "Experience unclear" : `${candidate.yearsPmExperience}y PM-titled experience`}
               {candidate.rank ? ` · Rank #${candidate.rank}` : ""}
             </p>
+            {candidate.roleDetectionNote && (
+              <p className="mt-1 text-xs text-neutral-400">{candidate.roleDetectionNote}</p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <ScoreBadge score={candidate.overallScore} />

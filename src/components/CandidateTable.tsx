@@ -42,6 +42,14 @@ export function CandidateTable({ candidates }: { candidates: CandidateListItem[]
                 </Link>
                 <div className="mt-0.5 flex flex-wrap gap-1.5">
                   <StatusBadge status={c.status} />
+                  {c.roleAutoDetected && (
+                    <span
+                      title={c.roleDetectionNote ?? undefined}
+                      className="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400"
+                    >
+                      role: auto
+                    </span>
+                  )}
                   {c.otherRoleFit?.flag && (
                     <span className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
                       {c.otherRoleFit.flag}

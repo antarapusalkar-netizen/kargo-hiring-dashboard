@@ -6,6 +6,7 @@ import { extractResumeText, UnreadableResumeError } from "@/lib/parse";
 import { buildScoringPacket } from "@/lib/redact";
 import { checkEnv, MissingEnvError } from "@/lib/env";
 import { criteriaForRole, type Role } from "@/lib/rubric";
+import { detectAppliedRole } from "@/lib/roleDetection";
 import { combineScores, type CombinedScoreResult } from "@/lib/scoring";
 import { RESUME_BUCKET, supabaseAdmin } from "@/lib/supabase";
 
@@ -34,8 +35,7 @@ function buildOtherRoleFlag(
 ): string | null {
   if (other.eligibility !== "eligible") return null;
   if (other.overallScore - applied.overallScore < 8) return null;
-  const otherLabel = otherRole(appliedRole) === "SPM" ? "SPM" : "PM";
-  return `Potential ${otherLabel} fit — review recommended.`;
+  return `Potential ${otherRole(appliedRole)} fit — review recommended.`;
 }
 
 export async function POST(req: NextRequest) {
@@ -58,12 +58,14 @@ export async function POST(req: NextRequest) {
     return badRequest("Could not read the upload — please try again.");
   }
 
-  const role = formData.get("role");
+  const roleField = formData.get("role");
   const file = formData.get("file");
 
-  if (role !== "PM" && role !== "SPM") {
-    return badRequest('Role must be "PM" or "SPM".');
+  if (roleField !== null && roleField !== "" && roleField !== "PM" && roleField !== "SPM") {
+    return badRequest('Role must be "PM", "SPM", or left blank to auto-detect.');
   }
+  const manualRole: Role | null = roleField === "PM" || roleField === "SPM" ? roleField : null;
+
   if (!(file instanceof File)) {
     return badRequest("No resume file was uploaded.");
   }
@@ -88,8 +90,9 @@ export async function POST(req: NextRequest) {
     throw err;
   }
 
-  // 2. Upload the original file to Supabase Storage.
-  const storagePath = `${role}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9_.-]/g, "_")}`;
+  // 2. Upload the original file to Supabase Storage. The path doesn't
+  // depend on role — which role applies isn't known until after extraction.
+  const storagePath = `uploads/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9_.-]/g, "_")}`;
   const { error: storageError } = await supabase.storage
     .from(RESUME_BUCKET)
     .upload(storagePath, buffer, { contentType: file.type || undefined });
@@ -100,14 +103,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const appliedRole = role as Role;
-  const secondaryRole = otherRole(appliedRole);
-
   // 3. AI extraction of structured resume facts.
   let candidateId: string | null = null;
   try {
     const extracted = await extractResume(resumeText);
     const { years, datesAmbiguous } = computePmExperienceYears(extracted.employment);
+    const { role: appliedRole, autoDetected, note: roleDetectionNote } = detectAppliedRole({
+      manualRole,
+      extracted,
+      years,
+    });
+    const secondaryRole = otherRole(appliedRole);
 
     const { data: inserted, error: insertError } = await supabase
       .from("candidates")
@@ -116,7 +122,9 @@ export async function POST(req: NextRequest) {
         email: extracted.email,
         phone: extracted.phone,
         location: extracted.location,
-        role,
+        role: appliedRole,
+        role_auto_detected: autoDetected,
+        role_detection_note: roleDetectionNote,
         resume_storage_path: storagePath,
         resume_text: resumeText,
         raw_extraction: extracted,
@@ -259,7 +267,7 @@ export async function POST(req: NextRequest) {
       })
       .eq("id", candidateId);
 
-    return NextResponse.json({ candidateId, overallScore: applied.overallScore });
+    return NextResponse.json({ candidateId, overallScore: applied.overallScore, appliedRole });
   } catch (err) {
     console.error("[upload] pipeline error", err);
     const message =

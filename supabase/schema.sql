@@ -122,6 +122,12 @@ create table if not exists candidates (
   created_at timestamptz not null default now()
 );
 
+-- Auto-detected applied role (no manual PM/SPM picker required at upload):
+-- see src/app/api/upload/route.ts for the detection order (explicit
+-- statement in the resume, then the rubric's own years band, then manual
+-- override if Arjun picked one explicitly).
+alter table candidates add column if not exists role_auto_detected boolean not null default false;
+alter table candidates add column if not exists role_detection_note text;
 alter table candidates add column if not exists other_role text check (other_role in ('PM', 'SPM'));
 alter table candidates add column if not exists other_role_score numeric;
 alter table candidates add column if not exists other_role_eligibility text check (other_role_eligibility in ('eligible', 'ineligible', 'needs_more_evidence'));

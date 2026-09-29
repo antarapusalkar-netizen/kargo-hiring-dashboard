@@ -13,7 +13,7 @@ export async function listCandidates(role: Role): Promise<CandidateListItem[]> {
   const { data, error } = await supabase
     .from("candidates")
     .select(
-      "id, name, role, years_pm_experience, overall_score, eligibility, confidence, recommendation, status, error_message, experience_flags, decision_status, other_role, other_role_score, other_role_eligibility, other_role_flag, created_at, interview_briefs(strengths, gaps)"
+      "id, name, role, years_pm_experience, overall_score, eligibility, confidence, recommendation, status, error_message, experience_flags, decision_status, other_role, other_role_score, other_role_eligibility, other_role_flag, role_auto_detected, role_detection_note, created_at, interview_briefs(strengths, gaps)"
     )
     .eq("role", role)
     .order("overall_score", { ascending: false, nullsFirst: false });
@@ -61,6 +61,8 @@ export async function listCandidates(role: Role): Promise<CandidateListItem[]> {
               flag: c.other_role_flag,
             }
           : null,
+      roleAutoDetected: !!c.role_auto_detected,
+      roleDetectionNote: c.role_detection_note,
       createdAt: c.created_at,
     };
   });
@@ -143,6 +145,8 @@ export async function getCandidateDetail(
             flag: candidate.other_role_flag,
           }
         : null,
+    roleAutoDetected: !!candidate.role_auto_detected,
+    roleDetectionNote: candidate.role_detection_note,
     createdAt: candidate.created_at,
     email: candidate.email,
     phone: candidate.phone,

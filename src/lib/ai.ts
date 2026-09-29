@@ -78,12 +78,18 @@ async function callStructured<T>(
 const EXTRACTION_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["name", "email", "phone", "location", "employment", "education", "skills"],
+  required: ["name", "email", "phone", "location", "employment", "education", "skills", "statedTargetRole"],
   properties: {
     name: { type: "string" },
     email: { type: ["string", "null"] },
     phone: { type: ["string", "null"] },
     location: { type: ["string", "null"] },
+    statedTargetRole: {
+      type: "string",
+      enum: ["PM", "SPM", "NONE"],
+      description:
+        'PM or SPM ONLY if the document explicitly states which role/position is being applied for or targeted — an objective/application line, a cover note, a header like "Applying for: Senior Product Manager". Do NOT set this from the candidate\'s current or most recent job title, seniority, or years of experience — a candidate whose current title is "Product Manager" is not necessarily applying to the PM posting rather than the SPM one. Use NONE if nothing explicit is stated (this is the common case for a plain resume with no cover note).',
+    },
     employment: {
       type: "array",
       items: {
@@ -130,7 +136,7 @@ const EXTRACTION_SCHEMA = {
 export async function extractResume(
   resumeText: string
 ): Promise<ExtractedResume> {
-  const system = `You extract structured facts from resumes for a hiring pipeline. Extract ONLY what is stated in the text — never invent skills, years of experience, responsibilities, achievements, leadership, or ownership that is not written. If a field is not present, use null (for scalars) or an empty array. Preserve bullet text close to verbatim so it can be used as evidence quotes later — do not summarize or embellish bullets.`;
+  const system = `You extract structured facts from resumes for a hiring pipeline. Extract ONLY what is stated in the text — never invent skills, years of experience, responsibilities, achievements, leadership, or ownership that is not written. If a field is not present, use null (for scalars) or an empty array. Preserve bullet text close to verbatim so it can be used as evidence quotes later — do not summarize or embellish bullets. For statedTargetRole specifically: only report an explicit statement of intent to apply for a role, never a guess from the candidate's seniority or current title.`;
   return callStructured<ExtractedResume>(
     system,
     `Extract structured data from this resume:\n\n---\n${resumeText}\n---`,

@@ -4,10 +4,13 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import type { Role } from "@/lib/rubric";
 
-export function UploadForm({ defaultRole }: { defaultRole: Role }) {
+/** "" means auto-detect — see detectAppliedRole in the upload route. */
+type RoleChoice = Role | "";
+
+export function UploadForm() {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
-  const [role, setRole] = useState<Role>(defaultRole);
+  const [role, setRole] = useState<RoleChoice>("");
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<"idle" | "uploading">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -22,7 +25,7 @@ export function UploadForm({ defaultRole }: { defaultRole: Role }) {
     setError(null);
 
     const body = new FormData();
-    body.append("role", role);
+    if (role) body.append("role", role);
     body.append("file", file);
 
     try {
@@ -57,9 +60,10 @@ export function UploadForm({ defaultRole }: { defaultRole: Role }) {
         <label className="text-xs font-medium text-neutral-500">Role</label>
         <select
           value={role}
-          onChange={(e) => setRole(e.target.value as Role)}
+          onChange={(e) => setRole(e.target.value as RoleChoice)}
           className="rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-800"
         >
+          <option value="">Auto-detect from resume</option>
           <option value="PM">Product Manager</option>
           <option value="SPM">Senior Product Manager</option>
         </select>
