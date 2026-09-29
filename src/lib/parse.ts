@@ -19,6 +19,23 @@ async function ensureDomMatrixPolyfill() {
 }
 
 /**
+ * pdfjs-dist also needs a `Path2D` global (used when building glyph outlines
+ * for fonts without a proper ToUnicode CMap) — same @napi-rs/canvas-native-
+ * binary polyfill that silently fails on Vercel ("Warning: Cannot polyfill
+ * 'Path2D', rendering may be broken", seen in Vercel's runtime logs), which
+ * left some characters mis-decoded (observed: a stray "•" appearing in
+ * extracted resume text that isn't in the source PDF). Polyfill with the
+ * pure-JS `path2d` package for the same reason as DOMMatrix above.
+ */
+async function ensurePath2DPolyfill() {
+  if (typeof (globalThis as { Path2D?: unknown }).Path2D !== "undefined") {
+    return;
+  }
+  const { Path2D } = await import("path2d");
+  (globalThis as { Path2D?: unknown }).Path2D = Path2D;
+}
+
+/**
  * In Node, pdfjs-dist runs parsing on the "main thread" instead of a real Web
  * Worker, by dynamically `import()`-ing its own worker module at runtime
  * (`GlobalWorkerOptions.workerSrc`, a relative path). Some bundlers/serverless
@@ -77,6 +94,7 @@ export async function extractResumeText(
 
     // pdf-parse v2 exposes a PDFParse class rather than a default function.
     await ensureDomMatrixPolyfill();
+    await ensurePath2DPolyfill();
     await ensurePdfWorkerGlobal();
     const { PDFParse } = await import("pdf-parse");
     const parser = new PDFParse({ data: new Uint8Array(buffer) });
