@@ -6,7 +6,7 @@ import { extractResumeText, UnreadableResumeError } from "@/lib/parse";
 import { buildScoringPacket } from "@/lib/redact";
 import { checkEnv, MissingEnvError } from "@/lib/env";
 import { criteriaForRole, type Role } from "@/lib/rubric";
-import { combineScores } from "@/lib/scoring";
+import { combineScores, type CombinedScoreResult } from "@/lib/scoring";
 import { RESUME_BUCKET, supabaseAdmin } from "@/lib/supabase";
 
 export const runtime = "nodejs";
@@ -14,6 +14,28 @@ export const maxDuration = 60;
 
 function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 });
+}
+
+function otherRole(role: Role): Role {
+  return role === "PM" ? "SPM" : "PM";
+}
+
+/**
+ * Rubric Part 1 / Part 16: if the OTHER role's rubric scores notably higher
+ * (and the candidate clears that role's eligibility gate), surface an
+ * explicit flag on the applied-role card — never silently reassign them.
+ * "Notably higher" = other role beats the applied score by 8+ points, which
+ * is roughly one full-weight criterion swinging from 0 to 2.
+ */
+function buildOtherRoleFlag(
+  appliedRole: Role,
+  applied: CombinedScoreResult,
+  other: CombinedScoreResult
+): string | null {
+  if (other.eligibility !== "eligible") return null;
+  if (other.overallScore - applied.overallScore < 8) return null;
+  const otherLabel = otherRole(appliedRole) === "SPM" ? "SPM" : "PM";
+  return `Potential ${otherLabel} fit — review recommended.`;
 }
 
 export async function POST(req: NextRequest) {
@@ -78,11 +100,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const appliedRole = role as Role;
+  const secondaryRole = otherRole(appliedRole);
+
   // 3. AI extraction of structured resume facts.
   let candidateId: string | null = null;
   try {
     const extracted = await extractResume(resumeText);
-    const years = computePmExperienceYears(extracted.employment);
+    const { years, datesAmbiguous } = computePmExperienceYears(extracted.employment);
 
     const { data: inserted, error: insertError } = await supabase
       .from("candidates")
@@ -105,31 +130,48 @@ export async function POST(req: NextRequest) {
     }
     candidateId = inserted.id as string;
 
-    // 4. Score against the rubric (redacted packet — no name/contact/university).
+    // 4. Score against BOTH rubrics in one call (redacted packet — no
+    // name/contact/university), then combine deterministically per role.
     const patterns = await fetchActiveCalibrationPatterns();
     const packet = buildScoringPacket(extracted);
     const { criterionScores, calibrationMatches, recentScopeGrowing } =
-      await scoreCandidate(role as Role, packet, patterns);
+      await scoreCandidate(appliedRole, packet, patterns);
 
-    const combined = combineScores({
-      role: role as Role,
-      years,
-      recentScopeGrowing,
-      aiScores: criterionScores,
-      calibrationMatches,
-      calibrationPatterns: patterns,
-    });
+    const combinedByRole: Record<Role, CombinedScoreResult> = {
+      [appliedRole]: combineScores({
+        role: appliedRole,
+        years,
+        datesAmbiguous,
+        recentScopeGrowing,
+        aiScores: criterionScores,
+        calibrationMatches,
+        calibrationPatterns: patterns,
+      }),
+      [secondaryRole]: combineScores({
+        role: secondaryRole,
+        years,
+        datesAmbiguous,
+        recentScopeGrowing,
+        aiScores: criterionScores,
+        calibrationMatches,
+        calibrationPatterns: patterns,
+      }),
+    } as Record<Role, CombinedScoreResult>;
 
-    // 5. Interview brief + email drafts + interview probes.
+    const applied = combinedByRole[appliedRole];
+    const other = combinedByRole[secondaryRole];
+    const otherRoleFlag = buildOtherRoleFlag(appliedRole, applied, other);
+
+    // 5. Interview brief + email drafts + interview probes (applied role only).
     const criteriaLabels = Object.fromEntries(
-      criteriaForRole(role as Role).map((c) => [c.key, c.label])
+      criteriaForRole(appliedRole).map((c) => [c.key, c.label])
     );
     const brief = await generateBrief({
-      role: role as Role,
+      role: appliedRole,
       candidateName: extracted.name || "Candidate",
-      overallScore: combined.overallScore,
-      eligibility: combined.eligibility,
-      criterionScores: combined.criterionScores.map((c) => ({
+      overallScore: applied.overallScore,
+      eligibility: applied.eligibility,
+      criterionScores: applied.criterionScores.map((c) => ({
         criterionKey: c.key,
         score: c.score,
         evidenceQuote: c.evidenceQuote,
@@ -137,12 +179,12 @@ export async function POST(req: NextRequest) {
         rationale: c.rationale,
       })),
       criteriaLabels,
-      gapCriteria: combined.gapCriteria,
+      gapCriteria: applied.gapCriteria,
     });
 
-    // 6. Persist everything.
+    // 6. Persist everything (applied-role breakdown in full; other role as a summary).
     await supabase.from("criterion_scores").upsert(
-      combined.criterionScores.map((c) => ({
+      applied.criterionScores.map((c) => ({
         candidate_id: candidateId,
         criterion_key: c.key,
         label: c.label,
@@ -160,15 +202,16 @@ export async function POST(req: NextRequest) {
     if (patterns.length > 0) {
       const matchByKey = new Map(calibrationMatches.map((m) => [m.patternKey, m]));
       await supabase.from("calibration_matches").upsert(
-        patterns.map((p) => {
-          const m = matchByKey.get(p.key);
+        applied.calibration.map((c) => {
+          const m = matchByKey.get(c.key);
           return {
             candidate_id: candidateId,
-            pattern_id: p.id,
-            matched: !!m?.matched,
-            evidence_quote: m?.evidenceQuote ?? null,
-            rationale: m?.rationale ?? "Not observed.",
-            points_awarded: m?.matched ? p.points : 0,
+            pattern_id: patterns.find((p) => p.key === c.key)!.id,
+            matched: c.matched,
+            evidence_quality: m?.evidenceQuality ?? "NO_EVIDENCE",
+            evidence_quote: c.evidenceQuote,
+            rationale: c.rationale,
+            points_awarded: c.pointsAwarded,
           };
         }),
         { onConflict: "candidate_id,pattern_id" }
@@ -191,6 +234,7 @@ export async function POST(req: NextRequest) {
         summary: brief.summary,
         strengths: brief.strengths,
         gaps: brief.gaps,
+        missing_evidence: applied.missingEvidence,
         email_interview_subject: brief.emailInterviewSubject,
         email_interview_body: brief.emailInterviewBody,
         email_rejection_subject: brief.emailRejectionSubject,
@@ -202,15 +246,20 @@ export async function POST(req: NextRequest) {
     await supabase
       .from("candidates")
       .update({
-        eligibility: combined.eligibility,
-        overall_score: combined.overallScore,
-        confidence: combined.confidence,
-        experience_flags: combined.experienceFlags,
+        eligibility: applied.eligibility,
+        overall_score: applied.overallScore,
+        confidence: applied.confidence,
+        recommendation: applied.recommendation,
+        experience_flags: applied.experienceFlags,
+        other_role: secondaryRole,
+        other_role_score: other.overallScore,
+        other_role_eligibility: other.eligibility,
+        other_role_flag: otherRoleFlag,
         status: "scored",
       })
       .eq("id", candidateId);
 
-    return NextResponse.json({ candidateId, overallScore: combined.overallScore });
+    return NextResponse.json({ candidateId, overallScore: applied.overallScore });
   } catch (err) {
     console.error("[upload] pipeline error", err);
     const message =

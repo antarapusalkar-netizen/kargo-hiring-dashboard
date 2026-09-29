@@ -30,6 +30,7 @@ export interface CriterionScoreResult {
 export interface CalibrationMatchResult {
   patternKey: string;
   matched: boolean;
+  evidenceQuality: EvidenceQuality;
   evidenceQuote: string | null;
   rationale: string;
 }
@@ -49,20 +50,39 @@ export interface BriefResult {
   emailRejectionBody: string;
 }
 
+export type Eligibility = "eligible" | "ineligible" | "needs_more_evidence";
+
+export type Recommendation =
+  | "RECOMMENDED FOR HUMAN REVIEW"
+  | "NEEDS MORE EVIDENCE"
+  | "DOES NOT CURRENTLY MEET ROLE REQUIREMENTS";
+
+export type DecisionStatus = "pending" | "advanced" | "rejected";
+
+export interface OtherRoleFit {
+  role: Role;
+  score: number;
+  eligibility: Eligibility;
+  flag: string | null;
+}
+
 export interface CandidateListItem {
   id: string;
   name: string;
   role: Role;
-  yearsPmExperience: number;
+  yearsPmExperience: number | null;
   overallScore: number | null;
   rank: number | null;
-  eligibility: "eligible" | "ineligible";
+  eligibility: Eligibility;
   confidence: EvidenceQuality | null;
+  recommendation: Recommendation | null;
   strengths: string[];
   gaps: string[];
   status: "processing" | "scored" | "error";
   errorMessage: string | null;
   experienceFlags: ExperienceFlag[];
+  decisionStatus: DecisionStatus;
+  otherRoleFit: OtherRoleFit | null;
   createdAt: string;
 }
 
@@ -82,12 +102,17 @@ export interface CandidateDetail extends CandidateListItem {
     rationale: string;
     capNote: string | null;
   }[];
+  missingEvidence: string[];
   calibration: {
     key: string;
     name: string;
-    points: number;
+    maxPoints: number;
+    pointsAwarded: number;
     matched: boolean;
+    evidenceQuality: EvidenceQuality | null;
     evidenceQuote: string | null;
+    rationale: string | null;
+    dependsOnUnmet: boolean;
   }[];
   calibrationScore: number;
   calibrationAvailable: boolean;

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { CandidateListItem } from "@/lib/types";
-import { ConfidenceBadge, EligibilityBadge, ScoreBadge, StatusBadge } from "./Badges";
+import { ConfidenceBadge, DecisionStatusBadge, EligibilityBadge, ScoreBadge, StatusBadge } from "./Badges";
 
 export function CandidateTable({ candidates }: { candidates: CandidateListItem[] }) {
   if (candidates.length === 0) {
@@ -24,6 +24,7 @@ export function CandidateTable({ candidates }: { candidates: CandidateListItem[]
             <th className="px-4 py-2.5">Confidence</th>
             <th className="px-4 py-2.5">Key strengths</th>
             <th className="px-4 py-2.5">Key gaps</th>
+            <th className="px-4 py-2.5">Decision</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
@@ -39,11 +40,18 @@ export function CandidateTable({ candidates }: { candidates: CandidateListItem[]
                 >
                   {c.name}
                 </Link>
-                <div className="mt-0.5">
+                <div className="mt-0.5 flex flex-wrap gap-1.5">
                   <StatusBadge status={c.status} />
+                  {c.otherRoleFit?.flag && (
+                    <span className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
+                      {c.otherRoleFit.flag}
+                    </span>
+                  )}
                 </div>
               </td>
-              <td className="px-4 py-3 whitespace-nowrap">{c.yearsPmExperience}y PM</td>
+              <td className="px-4 py-3 whitespace-nowrap">
+                {c.yearsPmExperience === null ? "Unclear" : `${c.yearsPmExperience}y PM`}
+              </td>
               <td className="px-4 py-3">
                 <ScoreBadge score={c.overallScore} />
               </td>
@@ -66,6 +74,9 @@ export function CandidateTable({ candidates }: { candidates: CandidateListItem[]
                     <li key={i} className="truncate">{g}</li>
                   ))}
                 </ul>
+              </td>
+              <td className="px-4 py-3">
+                <DecisionStatusBadge status={c.decisionStatus} />
               </td>
             </tr>
           ))}

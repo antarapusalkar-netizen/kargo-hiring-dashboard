@@ -17,24 +17,51 @@ function toMonthIndex(value: string, now: Date): number | null {
   return null;
 }
 
+export interface ExperienceComputation {
+  /** Null when dates could not be computed at all — never guessed (rubric Part 18). */
+  years: number | null;
+  /** True if any PM-titled role had unparseable/missing dates that were excluded from the total. */
+  datesAmbiguous: boolean;
+}
+
 /**
  * Computes total years of *PM-titled* experience (per rubric: only actual
  * Product Management titled experience counts), de-duplicating overlapping
  * months so concurrent PM roles aren't double-counted.
+ *
+ * Per Part 18: if a PM-titled role's dates can't be parsed, do not silently
+ * drop it and guess a smaller total — flag it so the pipeline reports
+ * "NEEDS MORE EVIDENCE" instead of a wrong ineligible/eligible call.
  */
 export function computePmExperienceYears(
   employment: EmploymentEntry[],
   now: Date = new Date()
-): number {
+): ExperienceComputation {
+  const pmRoles = employment.filter((e) => e.isPmRole);
+  if (pmRoles.length === 0) {
+    return { years: 0, datesAmbiguous: false };
+  }
+
   const months = new Set<number>();
-  for (const entry of employment) {
-    if (!entry.isPmRole) continue;
+  let datesAmbiguous = false;
+
+  for (const entry of pmRoles) {
     const start = toMonthIndex(entry.start, now);
     const end = toMonthIndex(entry.end, now);
-    if (start === null || end === null || end < start) continue;
+    if (start === null || end === null || end < start) {
+      datesAmbiguous = true;
+      continue;
+    }
     for (let m = start; m <= end; m++) months.add(m);
   }
-  return Math.round((months.size / 12) * 10) / 10;
+
+  if (datesAmbiguous && months.size === 0) {
+    // Every PM-titled role had unparseable dates — nothing to compute from.
+    return { years: null, datesAmbiguous: true };
+  }
+
+  const years = Math.round((months.size / 12) * 10) / 10;
+  return { years, datesAmbiguous };
 }
 
 /** True if the candidate's most recent PM role(s) show growing scope vs earlier ones. */

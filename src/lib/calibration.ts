@@ -7,6 +7,8 @@ export interface CalibrationPatternRow {
   description: string;
   evidence_signal: string;
   points: number;
+  /** Rubric Part 8: pattern 2 only awards points if this prerequisite pattern also matched with quality > NO_EVIDENCE. */
+  requires_pattern_key: string | null;
   source_note: string;
   active: boolean;
 }

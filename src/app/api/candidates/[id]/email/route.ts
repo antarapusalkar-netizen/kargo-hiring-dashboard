@@ -8,24 +8,29 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const body = await req.json().catch(() => ({}));
-  const type = body?.type;
-  if (type !== "interview" && type !== "rejection") {
-    return NextResponse.json(
-      { error: 'Body must include type: "interview" or "rejection".' },
-      { status: 400 }
-    );
-  }
 
   const supabase = supabaseAdmin();
   const { data: candidate, error: candidateError } = await supabase
     .from("candidates")
-    .select("id, name, email")
+    .select("id, name, email, decision_status")
     .eq("id", id)
     .maybeSingle();
   if (candidateError || !candidate) {
     return NextResponse.json({ error: "Candidate not found." }, { status: 404 });
   }
+
+  // Rubric Part 15 / non-negotiable #13: an email is a draft until Arjun
+  // explicitly Advances or Rejects. The type is never chosen freely by the
+  // client — it is derived from the recorded decision, so the AI's ranking
+  // alone can never trigger the wrong email.
+  if (candidate.decision_status === "pending") {
+    return NextResponse.json(
+      { error: "No decision has been made for this candidate yet. Choose Advance or Reject first." },
+      { status: 400 }
+    );
+  }
+  const type = candidate.decision_status === "advanced" ? "interview" : "rejection";
+
   if (!candidate.email) {
     return NextResponse.json(
       { error: "This candidate has no email address on file — cannot send." },
@@ -94,5 +99,5 @@ export async function POST(
     .update({ sent_email_type: type, sent_at: new Date().toISOString() })
     .eq("candidate_id", id);
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, type });
 }

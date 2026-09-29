@@ -1,10 +1,11 @@
 import OpenAI from "openai";
 import { env } from "./env";
-import { criteriaForRole, type Role } from "./rubric";
+import { unionCriteria, type Role } from "./rubric";
 import type {
   BriefResult,
   CalibrationMatchResult,
   CriterionScoreResult,
+  Eligibility,
   ExtractedResume,
   InterviewProbe,
 } from "./types";
@@ -178,10 +179,16 @@ function buildScoringSchema(calibrationPatterns: CalibrationPatternRow[]) {
         items: {
           type: "object",
           additionalProperties: false,
-          required: ["patternKey", "matched", "evidenceQuote", "rationale"],
+          required: ["patternKey", "matched", "evidenceQuality", "evidenceQuote", "rationale"],
           properties: {
             patternKey: { type: "string" },
             matched: { type: "boolean" },
+            evidenceQuality: {
+              type: "string",
+              enum: ["HIGH", "MEDIUM", "LOW", "NO_EVIDENCE"],
+              description:
+                "Quality of the evidence for the match (independent of `matched`). NO_EVIDENCE/false matched if nothing in the resume speaks to this pattern.",
+            },
             evidenceQuote: { type: ["string", "null"] },
             rationale: { type: "string" },
           },
@@ -200,7 +207,7 @@ function buildScoringSchema(calibrationPatterns: CalibrationPatternRow[]) {
 }
 
 export async function scoreCandidate(
-  role: Role,
+  appliedRole: Role,
   packet: ScoringPacket,
   calibrationPatterns: CalibrationPatternRow[]
 ): Promise<{
@@ -208,7 +215,14 @@ export async function scoreCandidate(
   calibrationMatches: CalibrationMatchResult[];
   recentScopeGrowing: boolean | null;
 }> {
-  const criteria = criteriaForRole(role);
+  // Rubric Part 1: every candidate is scored against BOTH the PM and SPM
+  // rubrics regardless of which role they applied for, so the dashboard can
+  // surface a stronger fit for the other role without silently reassigning
+  // them. One call covers the union of both criteria sets (two keys —
+  // relevant_pm_experience and first_principles_thinking — are shared and
+  // scored once; the years-based band cap that differs by role is applied
+  // deterministically afterwards, not by the model).
+  const criteria = unionCriteria();
   const rubricText = criteria
     .map(
       (c) =>
@@ -222,7 +236,7 @@ export async function scoreCandidate(
     .map((p) => `- ${p.key}: ${p.name} — ${p.evidence_signal}`)
     .join("\n");
 
-  const system = `You are scoring a candidate for the Kargo ${role === "PM" ? "Product Manager" : "Senior Product Manager"} role against Kargo's FINAL rubric. This rubric is authoritative — do not invent your own criteria or weights.
+  const system = `You are scoring a candidate against Kargo's FINAL hiring rubric, for BOTH the Product Manager (PM) and Senior Product Manager (SPM) roles at once (the candidate applied for ${appliedRole}, but Kargo's process requires scoring every candidate against both rubrics — see the criteria list below, which is the union of both). This rubric is authoritative — do not invent your own criteria or weights.
 
 Scale for every criterion: 0 = no evidence, 1 = partial, 2 = strong.
 Evidence quality tag (separate from score): HIGH | MEDIUM | LOW | NO_EVIDENCE.
@@ -326,7 +340,7 @@ export async function generateBrief(params: {
   role: Role;
   candidateName: string;
   overallScore: number;
-  eligibility: "eligible" | "ineligible";
+  eligibility: Eligibility;
   criterionScores: CriterionScoreResult[];
   criteriaLabels: Record<string, string>;
   gapCriteria: { key: string; label: string }[];
