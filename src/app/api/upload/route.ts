@@ -212,6 +212,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ candidateId, overallScore: combined.overallScore });
   } catch (err) {
+    console.error("[upload] pipeline error", err);
     const message =
       err instanceof AiAnalysisError || err instanceof MissingEnvError
         ? err.message
