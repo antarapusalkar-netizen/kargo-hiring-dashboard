@@ -71,12 +71,19 @@ export async function POST(
     throw err;
   }
 
+  const redirectTo = env.resendTestRedirectEmail;
+  const sendTo = redirectTo || candidate.email;
+  const sendSubject =
+    redirectTo && redirectTo !== candidate.email
+      ? `[Test — would go to ${candidate.name} <${candidate.email}>] ${subject}`
+      : subject;
+
   try {
     const resend = new Resend(resendApiKey);
     const { error: sendError } = await resend.emails.send({
       from: env.resendFromAddress,
-      to: candidate.email,
-      subject,
+      to: sendTo,
+      subject: sendSubject,
       text: bodyText,
     });
     if (sendError) {

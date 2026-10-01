@@ -35,6 +35,18 @@ export const env = {
   get resendFromAddress() {
     return process.env.RESEND_FROM_ADDRESS || "hiring@kargo.example.com";
   },
+  /**
+   * Optional. When set, every outgoing email is redirected to this address
+   * instead of the candidate's real one (subject gets a "[Test — ...]" tag
+   * so the intended recipient is still visible). Needed because Resend's
+   * sandbox mode only delivers to the Resend account's own email until a
+   * sending domain is verified — this lets the full Advance/Reject → Send
+   * flow be exercised against real candidates before a domain exists.
+   * Unset this once a verified domain + real RESEND_FROM_ADDRESS are set up.
+   */
+  get resendTestRedirectEmail() {
+    return process.env.RESEND_TEST_REDIRECT_EMAIL || null;
+  },
 };
 
 /** Non-throwing check used by UI/API to show a setup banner instead of a hard crash. */
